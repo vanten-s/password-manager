@@ -3,7 +3,7 @@ use color_eyre::eyre::Result;
 use color_eyre;
 use std::env;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Write, Cursor};
 use pgp::composed::{KeyType, key::SecretKeyParamsBuilder, signed_key::*, message::Message};
 use pgp::types::SecretKeyTrait;
 use pgp::Deserializable;
@@ -78,18 +78,40 @@ fn save(args: Vec<String>) -> Result<String, u32> {
     return Ok(String::from("Ez"))
 }
 
-fn generate_armored_string(msg: Message, pk: SignedPublicKey) -> Result<String> {
-    let mut rng = StdRng::from_entropy();
-    let new_msg = msg.encrypt_to_keys(&mut rng, SymmetricKeyAlgorithm::AES128, &[&pk])?;
-    Ok(new_msg.to_armored_string(None)?)
-}
-
 fn load(args: Vec<String>) -> Result<String, u32> {
     if args.len() != 5 {
         print_usage();
         return Err(1);
     }
-    return Ok(String::from("Not Implemented Yet"));
+
+    let proj_dirs = ProjectDirs::from("com", "vanten-s", "password-database").unwrap();
+    let data_dir: std::path::PathBuf = proj_dirs.data_local_dir().try_into().unwrap();
+    
+    let mut secret_key_path = data_dir.clone();
+    secret_key_path.push("secretkey.asc");
+
+    let secret_key = std::fs::read_to_string(secret_key_path).expect("Couldn't load secret key file!");
+    let (secret_key, _) = SignedSecretKey::from_string(secret_key.as_str()).expect("Couldn't load secret key!");
+
+    let mut load_file_path = data_dir.clone();
+
+    load_file_path.push(&args[2]);
+    load_file_path.push(&args[3]);
+    let armored = std::fs::read_to_string(load_file_path).expect("Couldn't load password file");
+    let (msg, _) = Message::from_armor_single(Cursor::new(armored)).expect("Couldn't load password into message");
+    let (decryptor, _) = msg
+        .decrypt(|| String::from(&args[4]), &[&secret_key])
+        .expect("Couldn't decrypt msg");
+
+    for msg in decryptor {
+        let bytes = msg.unwrap().get_content().unwrap().unwrap();
+        let clear = String::from_utf8(bytes).unwrap();
+        if String::len(&clear) > 0 {
+            return Ok(clear);
+        }
+    }
+    
+    Err(1)
 }
 
 fn generate_pass(args: Vec<String>) -> Result<String, u32> {
@@ -98,6 +120,12 @@ fn generate_pass(args: Vec<String>) -> Result<String, u32> {
         return Err(1);
     }
     return Ok(String::from("Not Implemented Yet"));
+}
+
+fn generate_armored_string(msg: Message, pk: SignedPublicKey) -> Result<String> {
+    let mut rng = StdRng::from_entropy();
+    let new_msg = msg.encrypt_to_keys(&mut rng, SymmetricKeyAlgorithm::AES128, &[&pk])?;
+    Ok(new_msg.to_armored_string(None)?)
 }
 
 fn save_key(keys: (String, String)) -> Result<String, u32> {
