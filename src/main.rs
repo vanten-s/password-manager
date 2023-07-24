@@ -4,16 +4,18 @@ use color_eyre;
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use pgp::composed::{KeyType, key::SecretKeyParamsBuilder};
+use pgp::composed::{KeyType, key::SecretKeyParamsBuilder, signed_key::*, message::Message};
 use pgp::types::SecretKeyTrait;
+use pgp::Deserializable;
 use pgp::crypto::sym::SymmetricKeyAlgorithm;
 use smallvec::*;
+use rand::prelude::*;
 
 static USAGE: &'static str = "
- generate-key [PASSWORD] generate a key. WARNING: only run once or you'll lose all your passwords
- save [PASSWORD] [NAME]  add password to database
- load [NAME]             get password from database
- generate-pass [NAME]    generate password and add to database
+ generate-key [PASSWORD]          Generate a key. WARNING: only run once or you'll lose all your passwords
+ save [SERVICE] [NAME] [PASSWORD] Add password to database
+ load [SERVICE] [NAME] [PASSWORD] Get password from database
+ generate-pass [SERVICE] [NAME]   Generate password and add to database
 ";
 
 fn generate_key(args: Vec<String>) -> (String, String) {
@@ -46,15 +48,44 @@ fn generate_key(args: Vec<String>) -> (String, String) {
 }
 
 fn save(args: Vec<String>) -> Result<String, u32> {
-    if args.len() != 4 {
+    if args.len() != 5 {
         print_usage();
         return Err(1);
     }
-    return Ok(String::from("Not Implemented Yet"));
+
+    let proj_dirs = ProjectDirs::from("com", "vanten-s", "password-database").unwrap();
+    let data_dir: std::path::PathBuf = proj_dirs.data_local_dir().try_into().unwrap();
+    
+    let mut public_key_path = data_dir.clone();
+    public_key_path.push("publickey.asc");
+
+    let public_key = std::fs::read_to_string(public_key_path).expect("Couldn't load public key file!");
+    let (public_key, _) = SignedPublicKey::from_string(public_key.as_str()).expect("Couldn't load public key!");
+
+    let mut save_file_path = data_dir.clone();
+
+    save_file_path.push(&args[2]); 
+    std::fs::create_dir_all(save_file_path.clone()).expect("Couldn't create directory!");
+
+    save_file_path.push(&args[3]); 
+    let mut save_file = File::create(save_file_path).expect("Couldn't open file");
+
+    let msg = Message::new_literal("none", &args[4]);
+    
+    let armored = generate_armored_string(msg, public_key).expect("Couldn't encrypt password!");
+    
+    save_file.write(armored.as_bytes()).expect("Could't save!!");
+    return Ok(String::from("Ez"))
+}
+
+fn generate_armored_string(msg: Message, pk: SignedPublicKey) -> Result<String> {
+    let mut rng = StdRng::from_entropy();
+    let new_msg = msg.encrypt_to_keys(&mut rng, SymmetricKeyAlgorithm::AES128, &[&pk])?;
+    Ok(new_msg.to_armored_string(None)?)
 }
 
 fn load(args: Vec<String>) -> Result<String, u32> {
-    if args.len() != 3 {
+    if args.len() != 5 {
         print_usage();
         return Err(1);
     }
