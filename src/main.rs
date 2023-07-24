@@ -115,11 +115,24 @@ fn load(args: Vec<String>) -> Result<String, u32> {
 }
 
 fn generate_pass(args: Vec<String>) -> Result<String, u32> {
-    if args.len() != 3 {
+    if args.len() != 4 {
         print_usage();
         return Err(1);
     }
-    return Ok(String::from("Not Implemented Yet"));
+
+    let password: Vec<u8> =  rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(15)
+        .collect();
+
+    let password = String::from_utf8(password).expect("Could not convert Vec<u8> to string :(");
+
+    println!("Password: {password}");
+
+    let mut save_args = args.clone();
+    save_args.push(password);
+
+    return save(save_args);
 }
 
 fn generate_armored_string(msg: Message, pk: SignedPublicKey) -> Result<String> {
