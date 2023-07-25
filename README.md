@@ -1,3 +1,3 @@
 # Password Manager
 
-Small little project for mattekollo 2023
+Silly little project for mattekollo 2023
